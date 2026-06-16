@@ -1,0 +1,17 @@
+# KubeVigil 快速部署测试 Pod
+# 用于验证 KubeVigil 检测能力
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kubevigil-test
+  namespace: default
+  labels:
+    app: kubevigil-test
+spec:
+  containers:
+    - name: test
+      image: busybox:latest
+      command: ["sleep", "3600"]
+      securityContext:
+        allowPrivilegeEscalation: true
+  restartPolicy: Never

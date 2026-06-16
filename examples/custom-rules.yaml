@@ -1,0 +1,92 @@
+# KubeVigil 自定义规则示例
+# 将此文件复制到 /etc/kubevigil/rules.yaml 并按需修改
+
+rules:
+  # ==================== 进程执行监控 ====================
+
+  # 反弹 Shell 检测
+  - name: reverse-shell-detected
+    description: "检测反弹 Shell 行为"
+    severity: critical
+    action: kill_pod
+    execve:
+      blockedProcesses:
+        - nc
+        - ncat
+        - socat
+      blockedArgs:
+        - "-e /bin/"
+        - "/dev/tcp/"
+        - "reverse"
+      excludeProcesses:
+        - kubevigil
+
+  # 挖矿程序检测
+  - name: crypto-mining
+    description: "检测加密货币挖矿程序"
+    severity: critical
+    action: kill_pod
+    execve:
+      blockedProcesses:
+        - xmrig
+        - minerd
+        - cgminer
+        - bfgminer
+        - cpuminer
+        - cryptonight
+
+  # 可疑下载执行
+  - name: suspicious-download
+    description: "检测 curl/wget 下载并管道执行"
+    severity: high
+    action: label_pod
+    execve:
+      blockedProcesses:
+        - wget
+        - curl
+      blockedArgs:
+        - "| bash"
+        - "| sh"
+        - "| /bin/sh"
+
+  # ==================== 文件访问监控 ====================
+
+  # 敏感文件访问
+  - name: sensitive-file-access
+    description: "检测对敏感文件的未授权访问"
+    severity: high
+    action: label_pod
+    open:
+      sensitivePaths:
+        - "/etc/shadow"
+        - "/etc/passwd"
+        - "/root/.ssh"
+        - "/root/.bash_history"
+        - "/var/run/secrets/kubernetes.io/serviceaccount/token"
+        - "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+      excludeProcesses:
+        - kubevigil
+        - kubelet
+        - containerd
+        - dockerd
+
+  # ==================== 网络连接监控 ====================
+
+  # C2 通信检测
+  - name: c2-communication
+    description: "检测与已知 C2 服务器的通信"
+    severity: critical
+    action: network_policy
+    connect:
+      blockedPorts:
+        - 4444    # 常见反弹 Shell 端口
+        - 1337    # 常见 C2 端口
+        - 31337   # Back Orifice
+        - 6666    # IRC C2
+        - 6667    # IRC C2
+        - 9999    # 常见 C2 端口
+      blockedCIDRs:
+        - "203.0.113.0/24"    # 示例：替换为实际威胁情报
+        - "198.51.100.0/24"   # 示例：替换为实际威胁情报
+      excludeProcesses:
+        - kubevigil

