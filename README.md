@@ -96,8 +96,10 @@ KubeVigil 是一个基于 **eBPF** 的 Kubernetes 运行时安全工具。它直
 ### 运维能力
 
 - **规则热重载** — 发送 `SIGHUP` 信号即可重载规则，无需重启 Agent
-- **日志级别控制** — 支持 debug/info/warn/error 四级日志
+- **日志级别控制** — 支持 debug/info/warn/error 四级日志过滤
 - **优雅关闭** — 收到 SIGINT/SIGTERM 后优雅关闭 Ring Buffer 和探针
+- **线程安全** — 规则引擎读写锁保护，热重载不影响事件处理
+- **健康检查** — DaemonSet 配置 livenessProbe，K8s 自动重启异常 Agent
 
 ### 内置安全规则
 
@@ -447,7 +449,7 @@ KubeVigil 输出：
 - [x] **阶段二：规则化** — YAML 规则引擎 + 黑白名单
 - [x] **阶段三：自动响应** — K8s API 集成 + 隔离/终止
 - [x] **阶段四：部署** — Dockerfile + Helm Chart
-- [x] **阶段四+：加固** — 内存对齐修复 + PID 映射 + 规则热重载 + 优雅关闭
+- [x] **阶段四+：加固** — 内存对齐修复 + PID 映射 + 规则热重载 + 优雅关闭 + 线程安全 + 健康检查
 - [ ] **阶段五：Web Dashboard** — 轻量级 Web 界面展示告警与统计
 - [ ] **阶段六：威胁情报集成** — 接入外部威胁情报源
 - [ ] **阶段七：eBPF Map 状态追踪** — 进程血缘关系追踪
