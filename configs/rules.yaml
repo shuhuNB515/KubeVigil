@@ -1,0 +1,92 @@
+# KubeVigil 默认规则配置
+rules:
+  # 反弹 Shell 检测
+  - name: reverse-shell-detected
+    description: "检测容器内可能的反弹 Shell 行为"
+    eventType: execve
+    severity: critical
+    action: kill
+    enabled: true
+    execve:
+      blockedProcesses:
+        - /bin/bash
+        - /bin/sh
+        - bash
+        - sh
+        - nc
+        - ncat
+        - socat
+      blockedArgs:
+        - "-e /bin/"
+        - "-c bash"
+        - "reverse"
+        - "/dev/tcp/"
+
+  # 可疑下载行为
+  - name: suspicious-download
+    description: "检测容器内可疑的文件下载行为"
+    eventType: execve
+    severity: high
+    action: label
+    enabled: true
+    execve:
+      blockedProcesses:
+        - wget
+        - curl
+      blockedArgs:
+        - "| bash"
+        - "| sh"
+        - "| /bin/"
+
+  # 加密货币挖矿检测
+  - name: crypto-mining
+    description: "检测容器内可能的加密货币挖矿行为"
+    eventType: execve
+    severity: critical
+    action: kill
+    enabled: true
+    execve:
+      blockedProcesses:
+        - xmrig
+        - minerd
+        - cpuminer
+        - cryptonight
+
+  # 敏感文件访问检测
+  - name: sensitive-file-access
+    description: "检测对敏感文件的非授权访问"
+    eventType: open
+    severity: high
+    action: label
+    enabled: true
+    open:
+      sensitivePaths:
+        - /etc/shadow
+        - /etc/passwd
+        - /var/run/secrets/kubernetes.io/
+        - /etc/kubernetes/
+        - /root/.ssh/
+        - /root/.kube/
+      excludeProcesses:
+        - cat
+        - less
+        - more
+        - head
+        - tail
+
+  # C2 通信检测
+  - name: c2-communication
+    description: "检测与已知 C2 服务器的通信"
+    eventType: connect
+    severity: critical
+    action: network_policy
+    enabled: true
+    connect:
+      blockedCIDRs:
+        - "0.0.0.0/0"
+      blockedPorts:
+        - 4444
+        - 5555
+        - 6666
+        - 7777
+        - 8888

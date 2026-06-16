@@ -1,0 +1,18 @@
+# KubeVigil 配置文件
+probe:
+  execve: true
+  open: true
+  connect: true
+  ringBufferSize: 16
+
+rules:
+  rulesFile: /etc/kubevigil/rules.yaml
+
+response:
+  enabled: true
+  defaultAction: label
+  isolationLabelKey: kubevigil.io/isolated
+  isolationLabelValue: "true"
+  highSeverityAction: kill
+
+logLevel: info

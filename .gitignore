@@ -1,0 +1,26 @@
+# Binaries
+kubevigil
+*.exe
+
+# eBPF 编译产物
+bpf/probes.o
+
+# Helm Chart 打包
+*.tgz
+
+# Go
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+dist/
+out/
