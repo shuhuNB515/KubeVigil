@@ -1,0 +1,17 @@
+apiVersion: v2
+name: kubevigil
+description: KubeVigil - 基于 eBPF 的 Kubernetes 运行时威胁检测与响应工具
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/shuhuNB515/KubeVigil
+sources:
+  - https://github.com/shuhuNB515/KubeVigil
+keywords:
+  - security
+  - ebpf
+  - runtime
+  - kubernetes
+  - threat-detection
+maintainers:
+  - name: shuhuNB515

@@ -1,0 +1,81 @@
+# KubeVigil Helm Chart 默认值
+
+replicaCount: 1
+
+image:
+  repository: kubevigil/kubevigil
+  pullPolicy: IfNotPresent
+  tag: "0.1.0"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# DaemonSet 配置（需要在每个节点上运行）
+daemonset:
+  enabled: true
+  priorityClassName: system-node-critical
+  tolerations:
+    - operator: Exists
+
+# eBPF 探针配置
+probe:
+  execve: true
+  open: true
+  connect: true
+  ringBufferSize: 16
+
+# 规则配置
+rules:
+  custom: false
+  content: ""
+
+# 响应配置
+response:
+  enabled: true
+  defaultAction: "label"
+  isolationLabelKey: "kubevigil.io/isolated"
+  isolationLabelValue: "true"
+  highSeverityAction: "kill"
+
+# 日志级别
+logLevel: "info"
+
+# 资源限制
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# ServiceAccount
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# RBAC
+rbac:
+  create: true
+
+# Pod 安全上下文
+podSecurityContext:
+  runAsNonRoot: false
+  privileged: true
+
+# 容器安全上下文
+securityContext:
+  capabilities:
+    add:
+      - SYS_ADMIN
+      - NET_ADMIN
+      - BPF
+      - PERFMON
+
+# 节点选择器
+nodeSelector: {}
+
+# 亲和性
+affinity: {}
