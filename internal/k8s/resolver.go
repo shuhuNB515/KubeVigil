@@ -6,10 +6,10 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -111,13 +111,19 @@ func (r *Resolver) syncPods(ctx context.Context) {
 			UID:       string(pod.UID),
 		}
 
-		// 遍历容器状态，获取 PID
+		// 遍历容器状态，获取 PID 和 cgroup 映射
 		for _, cs := range pod.Status.ContainerStatuses {
-			if cs.State.Running != nil && cs.ContainerID != "" {
-				// 从 cgroup ID 映射
+			if cs.State.Running != nil {
 				containerID := extractContainerID(cs.ContainerID)
 				if containerID != "" {
+					// 从 cgroup ID 映射
 					newCgroupToPod[uint32(hashContainerID(containerID))] = podInfo
+
+					// 从 /proc 读取容器内进程 PID
+					pids := r.findPidsForContainer(containerID)
+					for _, pid := range pids {
+						newPidToPod[pid] = podInfo
+					}
 				}
 			}
 		}
@@ -125,6 +131,48 @@ func (r *Resolver) syncPods(ctx context.Context) {
 
 	r.pidToPod = newPidToPod
 	r.cgroupToPod = newCgroupToPod
+}
+
+// findPidsForContainer 从 cgroup proc 文件中读取容器内所有 PID
+func (r *Resolver) findPidsForContainer(containerID string) []uint32 {
+	var pids []uint32
+
+	// 尝试从 cgroup v2 路径读取
+	cgroupPaths := []string{
+		fmt.Sprintf("/sys/fs/cgroup/kubepods/pod%s/%s/cgroup.procs", string(r.getPodUIDForContainer(containerID)), containerID),
+		fmt.Sprintf("/sys/fs/cgroup/kubepods.slice/pod%s.slice/%s/cgroup.procs", string(r.getPodUIDForContainer(containerID)), containerID),
+	}
+
+	for _, path := range cgroupPaths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			var pid uint32
+			if _, err := fmt.Sscanf(line, "%d", &pid); err == nil && pid > 0 {
+				pids = append(pids, pid)
+			}
+		}
+		if len(pids) > 0 {
+			return pids
+		}
+	}
+
+	return pids
+}
+
+// getPodUIDForContainer 根据 containerID 查找 Pod UID（简化实现）
+func (r *Resolver) getPodUIDForContainer(containerID string) string {
+	// 通过 cgroupToPod 反查
+	for _, pod := range r.cgroupToPod {
+		return pod.UID
+	}
+	return ""
 }
 
 // ResolveByPID 通过 PID 解析 Pod 信息

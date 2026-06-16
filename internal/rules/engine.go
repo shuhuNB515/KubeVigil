@@ -353,7 +353,7 @@ func DefaultRuleset() *Ruleset {
 						"/root/.ssh/",
 						"/root/.kube/",
 					},
-					ExcludeProcesses: []string{"cat", "less", "more", "head", "tail"},
+					ExcludeProcesses: []string{"kubevigil", "kubelet"},
 				},
 			},
 			// connect 规则
@@ -366,7 +366,8 @@ func DefaultRuleset() *Ruleset {
 				Enabled:     true,
 				Connect: &ConnectRule{
 					BlockedCIDRs: []string{
-						"0.0.0.0/0", // 占位，实际使用时替换为已知恶意 IP 段
+						"203.0.113.0/24", // RFC 5737 示例，实际使用时替换为已知恶意 IP 段
+						"198.51.100.0/24",
 					},
 					BlockedPorts: []uint16{4444, 5555, 6666, 7777, 8888},
 				},

@@ -21,9 +21,9 @@ enum event_type {
     EVENT_CONNECT   = 3,
 };
 
-// execve 事件结构
+// execve 事件结构（显式填充确保跨语言内存布局一致）
 struct execve_event {
-    enum event_type type;
+    u32 type;       // event_type
     u32 pid;
     u32 ppid;
     u32 tid;
@@ -32,11 +32,12 @@ struct execve_event {
     char filename[MAX_FILENAME_LEN];
     char args[MAX_ARGS_LEN];
     u32 cgroup_id;
+    u32 _pad;       // 对齐到 8 字节边界
 };
 
-// open 事件结构
+// open 事件结构（显式填充确保跨语言内存布局一致）
 struct open_event {
-    enum event_type type;
+    u32 type;       // event_type
     u32 pid;
     u32 ppid;
     u32 tid;
@@ -45,19 +46,22 @@ struct open_event {
     char path[MAX_PATH_LEN];
     s32 flags;
     u32 cgroup_id;
+    u32 _pad;       // 对齐到 8 字节边界
 };
 
-// connect 事件结构
+// connect 事件结构（显式填充确保跨语言内存布局一致）
 struct connect_event {
-    enum event_type type;
+    u32 type;       // event_type
     u32 pid;
     u32 ppid;
     u32 tid;
     u64 timestamp;
     char comm[MAX_COMM_LEN];
-    u8 ip_version; // 4=IPv4, 6=IPv6
+    u8 ip_version;  // 4=IPv4, 6=IPv6
+    u8 _pad1[3];    // 对齐 IP 字段到 4 字节边界
     u8 ip[MAX_IP_LEN];
     u16 port;
+    u16 _pad2;      // 对齐 cgroup_id 到 4 字节边界
     u32 cgroup_id;
 };
 

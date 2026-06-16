@@ -36,7 +36,8 @@ WORKDIR /
 # 从构建阶段复制二进制文件和 eBPF 程序
 COPY --from=builder /app/kubevigil /usr/local/bin/kubevigil
 COPY --from=builder /app/bpf/probes.o /etc/kubevigil/probes.o
+COPY --from=builder /app/configs/config.yaml /etc/kubevigil/config.yaml
 COPY --from=builder /app/configs/rules.yaml /etc/kubevigil/rules.yaml
 
 ENTRYPOINT ["kubevigil"]
-CMD ["-c", "/etc/kubevigil/rules.yaml"]
+CMD ["-c", "/etc/kubevigil/config.yaml"]

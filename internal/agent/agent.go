@@ -30,7 +30,10 @@ const (
 	eventTypeConnect = 3
 )
 
-// eBPF 事件结构（与 C 代码对应）
+// eBPF 事件结构（与 C 代码对应，必须保持内存布局一致）
+// 注意：Go 结构体字段顺序必须与 C 结构体完全一致，
+// 且使用 _pad 字段确保对齐，避免 binary.Read 解析错位。
+
 type bpfExecveEvent struct {
 	Type      uint32
 	PID       uint32
@@ -41,6 +44,7 @@ type bpfExecveEvent struct {
 	Filename  [256]byte
 	Args      [256]byte
 	CgroupID  uint32
+	_pad      uint32 // 对齐到 8 字节边界
 }
 
 type bpfOpenEvent struct {
@@ -53,6 +57,7 @@ type bpfOpenEvent struct {
 	Path      [256]byte
 	Flags     int32
 	CgroupID  uint32
+	_pad      uint32 // 对齐到 8 字节边界
 }
 
 type bpfConnectEvent struct {
@@ -63,8 +68,10 @@ type bpfConnectEvent struct {
 	Timestamp uint64
 	Comm      [64]byte
 	IPVersion uint8
+	_pad1     [3]byte // 对齐 IP 字段
 	IP        [16]byte
 	Port      uint16
+	_pad2     uint16 // 对齐 CgroupID
 	CgroupID  uint32
 }
 

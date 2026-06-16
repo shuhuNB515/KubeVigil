@@ -91,11 +91,8 @@ data:
             - /root/.ssh/
             - /root/.kube/
           excludeProcesses:
-            - cat
-            - less
-            - more
-            - head
-            - tail
+            - kubevigil
+            - kubelet
 
       - name: c2-communication
         description: "检测与已知 C2 服务器的通信"
@@ -105,7 +102,8 @@ data:
         enabled: true
         connect:
           blockedCIDRs:
-            - "0.0.0.0/0"
+            - "203.0.113.0/24"
+            - "198.51.100.0/24"
           blockedPorts:
             - 4444
             - 5555

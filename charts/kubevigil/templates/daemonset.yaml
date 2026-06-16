@@ -51,6 +51,12 @@ spec:
             - name: cgroup
               mountPath: /sys/fs/cgroup
               readOnly: true
+            - name: btf
+              mountPath: /sys/kernel/btf
+              readOnly: true
+            - name: proc
+              mountPath: /proc
+              readOnly: true
       volumes:
         - name: config
           configMap:
@@ -61,6 +67,12 @@ spec:
         - name: cgroup
           hostPath:
             path: /sys/fs/cgroup
+        - name: btf
+          hostPath:
+            path: /sys/kernel/btf
+        - name: proc
+          hostPath:
+            path: /proc
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
