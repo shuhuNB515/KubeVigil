@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/shuhuNB515/KubeVigil/internal/event"
 	"gopkg.in/yaml.v3"
@@ -81,7 +82,8 @@ type Ruleset struct {
 
 // Engine 规则引擎
 type Engine struct {
-	rules *Ruleset
+	rules    *Ruleset
+	rulesMux sync.RWMutex
 }
 
 // NewEngine 创建规则引擎
@@ -89,6 +91,40 @@ func NewEngine() *Engine {
 	return &Engine{
 		rules: &Ruleset{Rules: []Rule{}},
 	}
+}
+
+// ReloadRules 热重载规则（线程安全）
+func (e *Engine) ReloadRules(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("读取规则文件失败: %w", err)
+	}
+
+	var rs Ruleset
+	if err := yaml.Unmarshal(data, &rs); err != nil {
+		return fmt.Errorf("解析规则文件失败: %w", err)
+	}
+
+	// 预处理 connect 规则的 CIDR
+	for i := range rs.Rules {
+		if rs.Rules[i].Connect != nil {
+			if err := e.parseCIDRs(&rs.Rules[i]); err != nil {
+				return fmt.Errorf("规则 %q CIDR 解析失败: %w", rs.Rules[i].Name, err)
+			}
+		}
+	}
+
+	e.rulesMux.Lock()
+	e.rules = &rs
+	e.rulesMux.Unlock()
+	return nil
+}
+
+// GetRuleCount 返回已加载规则数量
+func (e *Engine) GetRuleCount() int {
+	e.rulesMux.RLock()
+	defer e.rulesMux.RUnlock()
+	return len(e.rules.Rules)
 }
 
 // LoadRules 从文件加载规则
@@ -136,6 +172,9 @@ func (e *Engine) LoadDefaultRules() {
 
 // MatchExecve 匹配 execve 事件
 func (e *Engine) MatchExecve(filename string, args string, comm string) *MatchResult {
+	e.rulesMux.RLock()
+	defer e.rulesMux.RUnlock()
+
 	for i := range e.rules.Rules {
 		rule := &e.rules.Rules[i]
 		if !rule.Enabled || rule.EventType != "execve" || rule.Execve == nil {
@@ -195,6 +234,9 @@ func (e *Engine) MatchExecve(filename string, args string, comm string) *MatchRe
 
 // MatchOpen 匹配 open 事件
 func (e *Engine) MatchOpen(path string, comm string) *MatchResult {
+	e.rulesMux.RLock()
+	defer e.rulesMux.RUnlock()
+
 	for i := range e.rules.Rules {
 		rule := &e.rules.Rules[i]
 		if !rule.Enabled || rule.EventType != "open" || rule.Open == nil {
@@ -231,6 +273,9 @@ func (e *Engine) MatchOpen(path string, comm string) *MatchResult {
 
 // MatchConnect 匹配 connect 事件
 func (e *Engine) MatchConnect(ip net.IP, port uint16, comm string) *MatchResult {
+	e.rulesMux.RLock()
+	defer e.rulesMux.RUnlock()
+
 	for i := range e.rules.Rules {
 		rule := &e.rules.Rules[i]
 		if !rule.Enabled || rule.EventType != "connect" || rule.Connect == nil {
@@ -309,8 +354,8 @@ func DefaultRuleset() *Ruleset {
 				Action:      "kill",
 				Enabled:     true,
 				Execve: &ExecveRule{
-					BlockedProcesses: []string{"/bin/bash", "/bin/sh", "bash", "sh", "nc", "ncat", "socat"},
-					BlockedArgs:      []string{"-e /bin/", "-c bash", "reverse", "/dev/tcp/"},
+					BlockedProcesses: []string{"nc", "ncat", "socat"},
+					BlockedArgs:      []string{"-e /bin/", "/dev/tcp/", "reverse"},
 				},
 			},
 			{
@@ -322,7 +367,7 @@ func DefaultRuleset() *Ruleset {
 				Enabled:     true,
 				Execve: &ExecveRule{
 					BlockedProcesses: []string{"wget", "curl"},
-					BlockedArgs:      []string{"| bash", "| sh", "| /bin/"},
+					BlockedArgs:      []string{"| bash", "| sh", "| /bin/sh"},
 				},
 			},
 			{

@@ -35,18 +35,13 @@ data:
         enabled: true
         execve:
           blockedProcesses:
-            - /bin/bash
-            - /bin/sh
-            - bash
-            - sh
             - nc
             - ncat
             - socat
           blockedArgs:
             - "-e /bin/"
-            - "-c bash"
-            - reverse
             - "/dev/tcp/"
+            - "reverse"
 
       - name: suspicious-download
         description: "检测容器内可疑的文件下载行为"
@@ -61,7 +56,7 @@ data:
           blockedArgs:
             - "| bash"
             - "| sh"
-            - "| /bin/"
+            - "| /bin/sh"
 
       - name: crypto-mining
         description: "检测容器内可能的加密货币挖矿行为"

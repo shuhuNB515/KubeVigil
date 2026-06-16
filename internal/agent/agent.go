@@ -115,6 +115,9 @@ func New(cfg *config.Config) (*Agent, error) {
 
 // Run 启动 Agent
 func (a *Agent) Run(ctx context.Context) error {
+	// 设置日志级别
+	a.setupLogging()
+
 	// 移除内存锁限制
 	if err := rlimit.RemoveMemLock(); err != nil {
 		return fmt.Errorf("移除内存锁限制失败: %w", err)
@@ -150,11 +153,17 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.k8s.Start(ctx)
 	}
 
+	// 启动规则热重载监听
+	if a.cfg.Rules.RulesFile != "" {
+		go a.watchRulesReload(ctx)
+	}
+
 	// 启动事件处理协程
 	go a.processEvents(ctx)
 	go a.processAlerts(ctx)
 
 	log.Println("[Agent] KubeVigil 守夜人已启动，正在监听...")
+	log.Printf("[Agent] 已加载 %d 条安全规则", a.rules.GetRuleCount())
 
 	// 读取事件循环
 	go a.readEvents(ctx, reader)
@@ -162,6 +171,12 @@ func (a *Agent) Run(ctx context.Context) error {
 	// 等待退出信号
 	<-ctx.Done()
 	log.Println("[Agent] KubeVigil 守夜人正在关闭...")
+
+	// 关闭 Ring Buffer Reader 以中断阻塞读取
+	if err := reader.Close(); err != nil {
+		log.Printf("[Agent] 关闭 Ring Buffer 失败: %v", err)
+	}
+
 	return nil
 }
 
@@ -347,8 +362,11 @@ func (a *Agent) handleConnectEvent(data []byte) {
 		ip = net.IP(bpfEvent.IP[:4])
 	}
 
+	// 端口从网络字节序（大端）转换为主机字节序
+	port := uint16(bpfEvent.Port>>8) | uint16(bpfEvent.Port<<8)
+
 	// 规则匹配
-	match := a.rules.MatchConnect(ip, bpfEvent.Port, comm)
+	match := a.rules.MatchConnect(ip, port, comm)
 	if match == nil {
 		return
 	}
@@ -493,6 +511,43 @@ func (a *Agent) executeResponse(ctx context.Context, alert *event.Alert, action 
 // trimNull 去除字符串中的 null 字节
 func trimNull(b []byte) string {
 	return string(bytes.TrimRight(b, "\x00"))
+}
+
+// setupLogging 根据配置设置日志级别
+func (a *Agent) setupLogging() {
+	switch a.cfg.LogLevel {
+	case "debug":
+		log.SetFlags(log.LstdFlags | log.Lshortfile)
+		log.Println("[Agent] 日志级别: debug")
+	case "warn", "error":
+		log.SetFlags(0)
+	default:
+		log.SetFlags(log.LstdFlags)
+	}
+}
+
+// watchRulesReload 监听 SIGHUP 信号热重载规则
+func (a *Agent) watchRulesReload(ctx context.Context) {
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGHUP)
+
+	for {
+		select {
+		case <-ctx.Done():
+			signal.Stop(sigCh)
+			return
+		case <-sigCh:
+			if a.cfg.Rules.RulesFile == "" {
+				continue
+			}
+			log.Printf("[Agent] 收到 SIGHUP 信号，正在重载规则: %s", a.cfg.Rules.RulesFile)
+			if err := a.rules.ReloadRules(a.cfg.Rules.RulesFile); err != nil {
+				log.Printf("[Agent] 重载规则失败: %v", err)
+			} else {
+				log.Printf("[Agent] 规则重载成功，当前 %d 条规则", a.rules.GetRuleCount())
+			}
+		}
+	}
 }
 
 // WaitForSignal 等待退出信号

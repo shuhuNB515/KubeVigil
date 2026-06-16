@@ -9,18 +9,13 @@ rules:
     enabled: true
     execve:
       blockedProcesses:
-        - /bin/bash
-        - /bin/sh
-        - bash
-        - sh
         - nc
         - ncat
         - socat
       blockedArgs:
         - "-e /bin/"
-        - "-c bash"
-        - "reverse"
         - "/dev/tcp/"
+        - "reverse"
 
   # 可疑下载行为
   - name: suspicious-download
@@ -36,7 +31,7 @@ rules:
       blockedArgs:
         - "| bash"
         - "| sh"
-        - "| /bin/"
+        - "| /bin/sh"
 
   # 加密货币挖矿检测
   - name: crypto-mining

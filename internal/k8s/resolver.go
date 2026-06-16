@@ -26,11 +26,12 @@ type PodInfo struct {
 
 // Resolver 将 PID 映射到 K8s Pod
 type Resolver struct {
-	clientset  *kubernetes.Clientset
-	pidToPod   map[uint32]*PodInfo
-	cgroupToPod map[uint32]*PodInfo
-	mu         sync.RWMutex
-	nodeName   string
+	clientset     *kubernetes.Clientset
+	pidToPod      map[uint32]*PodInfo
+	cgroupToPod   map[uint32]*PodInfo
+	containerUIDs map[string]string // containerID -> podUID 映射
+	mu            sync.RWMutex
+	nodeName      string
 }
 
 // NewResolver 创建 Resolver
@@ -57,10 +58,11 @@ func NewResolver() (*Resolver, error) {
 	}
 
 	r := &Resolver{
-		clientset:   clientset,
-		pidToPod:    make(map[uint32]*PodInfo),
-		cgroupToPod: make(map[uint32]*PodInfo),
-		nodeName:    nodeName,
+		clientset:     clientset,
+		pidToPod:      make(map[uint32]*PodInfo),
+		cgroupToPod:   make(map[uint32]*PodInfo),
+		containerUIDs: make(map[string]string),
+		nodeName:      nodeName,
 	}
 
 	return r, nil
@@ -102,6 +104,7 @@ func (r *Resolver) syncPods(ctx context.Context) {
 	// 清空旧映射
 	newPidToPod := make(map[uint32]*PodInfo)
 	newCgroupToPod := make(map[uint32]*PodInfo)
+	newContainerUIDs := make(map[string]string)
 
 	for i := range pods.Items {
 		pod := &pods.Items[i]
@@ -116,11 +119,14 @@ func (r *Resolver) syncPods(ctx context.Context) {
 			if cs.State.Running != nil {
 				containerID := extractContainerID(cs.ContainerID)
 				if containerID != "" {
+					// 记录 containerID -> podUID 映射
+					newContainerUIDs[containerID] = string(pod.UID)
+
 					// 从 cgroup ID 映射
 					newCgroupToPod[uint32(hashContainerID(containerID))] = podInfo
 
-					// 从 /proc 读取容器内进程 PID
-					pids := r.findPidsForContainer(containerID)
+					// 从 cgroup 读取容器内进程 PID
+					pids := r.findPidsForContainer(containerID, string(pod.UID))
 					for _, pid := range pids {
 						newPidToPod[pid] = podInfo
 					}
@@ -131,16 +137,25 @@ func (r *Resolver) syncPods(ctx context.Context) {
 
 	r.pidToPod = newPidToPod
 	r.cgroupToPod = newCgroupToPod
+	r.containerUIDs = newContainerUIDs
 }
 
 // findPidsForContainer 从 cgroup proc 文件中读取容器内所有 PID
-func (r *Resolver) findPidsForContainer(containerID string) []uint32 {
+func (r *Resolver) findPidsForContainer(containerID string, podUID string) []uint32 {
 	var pids []uint32
 
-	// 尝试从 cgroup v2 路径读取
+	// 尝试多种 cgroup 路径模式（覆盖 cgroup v1/v2 + 不同运行时）
 	cgroupPaths := []string{
-		fmt.Sprintf("/sys/fs/cgroup/kubepods/pod%s/%s/cgroup.procs", string(r.getPodUIDForContainer(containerID)), containerID),
-		fmt.Sprintf("/sys/fs/cgroup/kubepods.slice/pod%s.slice/%s/cgroup.procs", string(r.getPodUIDForContainer(containerID)), containerID),
+		// cgroup v1: kubepods
+		fmt.Sprintf("/sys/fs/cgroup/cpu/kubepods/pod%s/%s/cgroup.procs", podUID, containerID),
+		fmt.Sprintf("/sys/fs/cgroup/cpu/kubepods.slice/pod%s.slice/%s/cgroup.procs", podUID, containerID),
+		// cgroup v2: unified hierarchy
+		fmt.Sprintf("/sys/fs/cgroup/kubepods/pod%s/%s/cgroup.procs", podUID, containerID),
+		fmt.Sprintf("/sys/fs/cgroup/kubepods.slice/pod%s.slice/%s/cgroup.procs", podUID, containerID),
+		// containerd 风格
+		fmt.Sprintf("/sys/fs/cgroup/cpu/kubepods/pod%s/cri-containerd-%s/cgroup.procs", podUID, containerID),
+		// cgroup v2 system.slice
+		fmt.Sprintf("/sys/fs/cgroup/system.slice/containerd.service/%s/cgroup.procs", containerID),
 	}
 
 	for _, path := range cgroupPaths {
@@ -166,13 +181,11 @@ func (r *Resolver) findPidsForContainer(containerID string) []uint32 {
 	return pids
 }
 
-// getPodUIDForContainer 根据 containerID 查找 Pod UID（简化实现）
+// getPodUIDForContainer 根据 containerID 查找 Pod UID
 func (r *Resolver) getPodUIDForContainer(containerID string) string {
-	// 通过 cgroupToPod 反查
-	for _, pod := range r.cgroupToPod {
-		return pod.UID
-	}
-	return ""
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.containerUIDs[containerID]
 }
 
 // ResolveByPID 通过 PID 解析 Pod 信息

@@ -71,6 +71,18 @@ struct {
     __uint(max_entries, 1 << 24); // 16MB
 } events SEC(".maps");
 
+// 获取父进程 PID 的辅助宏
+static __always_inline u32 get_ppid(void)
+{
+    struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+    u32 ppid = 0;
+    struct task_struct *parent;
+    if (bpf_core_read(&parent, sizeof(parent), &task->parent) == 0 && parent) {
+        bpf_core_read(&ppid, sizeof(ppid), &parent->tgid);
+    }
+    return ppid;
+}
+
 // ==================== execve 监控 ====================
 
 SEC("tracepoint/syscalls/sys_enter_execve")
@@ -83,7 +95,7 @@ int trace_execve(struct trace_event_raw_sys_enter *ctx)
 
     e->type = EVENT_EXECVE;
     e->pid = bpf_get_current_pid_tgid() >> 32;
-    e->ppid = 0;
+    e->ppid = get_ppid();
     e->tid = (u32)bpf_get_current_pid_tgid();
     e->timestamp = bpf_ktime_get_ns();
     e->cgroup_id = bpf_get_current_cgroup_id();
@@ -117,7 +129,7 @@ int trace_openat(struct trace_event_raw_sys_enter *ctx)
 
     e->type = EVENT_OPEN;
     e->pid = bpf_get_current_pid_tgid() >> 32;
-    e->ppid = 0;
+    e->ppid = get_ppid();
     e->tid = (u32)bpf_get_current_pid_tgid();
     e->timestamp = bpf_ktime_get_ns();
     e->cgroup_id = bpf_get_current_cgroup_id();
@@ -155,7 +167,7 @@ int trace_connect(struct trace_event_raw_sys_enter *ctx)
 
     e->type = EVENT_CONNECT;
     e->pid = bpf_get_current_pid_tgid() >> 32;
-    e->ppid = 0;
+    e->ppid = get_ppid();
     e->tid = (u32)bpf_get_current_pid_tgid();
     e->timestamp = bpf_ktime_get_ns();
     e->cgroup_id = bpf_get_current_cgroup_id();
