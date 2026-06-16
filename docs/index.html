@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KubeVigil - 基于 eBPF 的 Kubernetes 运行时威胁检测与响应</title>
+  <meta name="description" content="KubeVigil 是一个基于 eBPF 的 Kubernetes 运行时安全工具，实时检测反弹Shell、挖矿、C2通信等威胁并自动响应。">
+  <meta name="keywords" content="eBPF, Kubernetes, Runtime Security, 云原生安全, 运行时防护">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/go.min.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <!-- Navigation -->
+  <nav class="nav" :class="{ 'nav-scrolled': scrolled }">
+    <div class="nav-inner">
+      <a class="nav-brand" href="#hero" @click.prevent="scrollTo('hero')">
+        <span class="nav-logo">🛡️</span>
+        <span class="nav-title">KubeVigil</span>
+      </a>
+      <div class="nav-links" :class="{ 'nav-open': menuOpen }">
+        <a v-for="item in navItems" :key="item.id" :href="'#' + item.id"
+           @click.prevent="scrollTo(item.id); menuOpen = false"
+           :class="{ active: currentSection === item.id }">
+          {{ item.label }}
+        </a>
+        <a class="nav-github" href="https://github.com/shuhuNB515/KubeVigil" target="_blank">
+          <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
+          GitHub
+        </a>
+      </div>
+      <button class="nav-toggle" @click="menuOpen = !menuOpen">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <section id="hero" class="hero">
+    <div class="hero-bg">
+      <div class="hero-grid"></div>
+      <div class="hero-glow"></div>
+    </div>
+    <div class="container hero-content">
+      <div class="hero-badge">基于 eBPF 的云原生运行时安全</div>
+      <h1 class="hero-title">
+        KubeVigil
+        <span class="hero-subtitle">K8s 守夜人</span>
+      </h1>
+      <p class="hero-desc">传统安全扫描是静态的，但真实攻击是动态的。<br>KubeVigil 在 Linux 内核态实时监控容器行为，威胁一出现即被阻断。</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#quickstart" @click.prevent="scrollTo('quickstart')">
+          快速开始
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+        <a class="btn btn-secondary" href="https://github.com/shuhuNB515/KubeVigil" target="_blank">
+          <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
+          查看源码
+        </a>
+      </div>
+      <div class="hero-badges">
+        <span class="badge">Go 1.21+</span>
+        <span class="badge">eBPF CO-RE</span>
+        <span class="badge">K8s 1.24+</span>
+        <span class="badge">Kernel 5.8+</span>
+        <span class="badge">Apache 2.0</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Why KubeVigil -->
+  <section id="why" class="section">
+    <div class="container">
+      <h2 class="section-title">为什么需要 KubeVigil？</h2>
+      <p class="section-desc">传统静态扫描无法应对运行时威胁，KubeVigil 从内核态视角提供零侵入的实时防护</p>
+      <div class="compare-table">
+        <div class="compare-row compare-header">
+          <div class="compare-cell">传统静态扫描</div>
+          <div class="compare-cell highlight">KubeVigil 运行时防护</div>
+        </div>
+        <div class="compare-row" v-for="(item, i) in comparisons" :key="i">
+          <div class="compare-cell">{{ item.traditional }}</div>
+          <div class="compare-cell highlight">{{ item.kubevigil }}</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section id="features" class="section section-alt">
+    <div class="container">
+      <h2 class="section-title">核心能力</h2>
+      <p class="section-desc">三大系统调用监控 + YAML 规则引擎 + 自动响应，构建完整的运行时安全闭环</p>
+      <div class="feature-grid">
+        <div class="feature-card" v-for="f in features" :key="f.title">
+          <div class="feature-icon">{{ f.icon }}</div>
+          <h3>{{ f.title }}</h3>
+          <p>{{ f.desc }}</p>
+          <ul class="feature-list" v-if="f.items">
+            <li v-for="item in f.items" :key="item">{{ item }}</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Architecture -->
+  <section id="architecture" class="section">
+    <div class="container">
+      <h2 class="section-title">核心架构</h2>
+      <p class="section-desc">内核态探针 → Ring Buffer → 用户态规则引擎 → K8s API 响应</p>
+      <div class="arch-diagram">
+        <div class="arch-layer">
+          <div class="arch-layer-title">内核态探针层 (eBPF C, CO-RE)</div>
+          <div class="arch-nodes">
+            <div class="arch-node probe">execve<br><small>进程执行</small></div>
+            <div class="arch-node probe">openat<br><small>文件访问</small></div>
+            <div class="arch-node probe">connect<br><small>网络连接</small></div>
+          </div>
+          <div class="arch-arrow">▼ Ring Buffer ▼</div>
+        </div>
+        <div class="arch-layer">
+          <div class="arch-layer-title">用户态分析引擎 (Go)</div>
+          <div class="arch-nodes">
+            <div class="arch-node agent">事件接收<br><small>Ring Buffer Reader</small></div>
+            <div class="arch-node agent">规则匹配<br><small>YAML 规则引擎</small></div>
+            <div class="arch-node agent">上下文丰富<br><small>PID → Pod 映射</small></div>
+          </div>
+          <div class="arch-arrow">▼ K8s API ▼</div>
+        </div>
+        <div class="arch-layer">
+          <div class="arch-layer-title">响应与加固层</div>
+          <div class="arch-nodes">
+            <div class="arch-node response">Label 隔离<br><small>打标签触发 NetworkPolicy</small></div>
+            <div class="arch-node response">Kill Pod<br><small>立即终止受感染 Pod</small></div>
+            <div class="arch-node response">NetworkPolicy<br><small>网络流量阻断</small></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Detection Scenarios -->
+  <section id="scenarios" class="section section-alt">
+    <div class="container">
+      <h2 class="section-title">检测场景</h2>
+      <p class="section-desc">覆盖容器环境中最常见的攻击手法</p>
+      <div class="scenario-grid">
+        <div class="scenario-card" v-for="s in scenarios" :key="s.title" :class="'severity-' + s.severity">
+          <div class="scenario-severity">{{ s.severityLabel }}</div>
+          <h3>{{ s.title }}</h3>
+          <p class="scenario-attack">{{ s.attack }}</p>
+          <div class="scenario-detail">
+            <span class="scenario-tag">检测: {{ s.detect }}</span>
+            <span class="scenario-tag">响应: {{ s.action }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick Start -->
+  <section id="quickstart" class="section">
+    <div class="container">
+      <h2 class="section-title">快速开始</h2>
+      <p class="section-desc">三步完成部署，即刻开始运行时防护</p>
+      <div class="steps">
+        <div class="step" v-for="(step, i) in steps" :key="i">
+          <div class="step-num">{{ i + 1 }}</div>
+          <div class="step-content">
+            <h3>{{ step.title }}</h3>
+            <div class="code-block">
+              <pre><code class="language-bash">{{ step.code }}</code></pre>
+              <button class="copy-btn" @click="copyCode(step.code)">复制</button>
+            </div>
+            <p class="step-note" v-if="step.note">{{ step.note }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Rules -->
+  <section id="rules" class="section section-alt">
+    <div class="container">
+      <h2 class="section-title">规则引擎</h2>
+      <p class="section-desc">声明式 YAML 规则，支持热重载，无需重启 Agent</p>
+      <div class="rules-content">
+        <div class="rules-table">
+          <h3>内置安全规则</h3>
+          <table>
+            <thead>
+              <tr><th>规则</th><th>类型</th><th>严重等级</th><th>响应动作</th><th>描述</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in builtInRules" :key="r.name">
+                <td><code>{{ r.name }}</code></td>
+                <td>{{ r.type }}</td>
+                <td><span class="severity-badge" :class="'sev-' + r.severity">{{ r.severity }}</span></td>
+                <td>{{ r.action }}</td>
+                <td>{{ r.desc }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="rules-example">
+          <h3>自定义规则示例</h3>
+          <div class="code-block">
+            <pre><code class="language-yaml">{{ customRuleExample }}</code></pre>
+            <button class="copy-btn" @click="copyCode(customRuleExample)">复制</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Response Actions -->
+  <section id="response" class="section">
+    <div class="container">
+      <h2 class="section-title">自动响应</h2>
+      <p class="section-desc">检测到威胁后自动执行响应策略，从告警到阻断一气呵成</p>
+      <div class="response-grid">
+        <div class="response-card" v-for="r in responseActions" :key="r.name">
+          <div class="response-icon">{{ r.icon }}</div>
+          <h3>{{ r.name }}</h3>
+          <p>{{ r.desc }}</p>
+          <div class="response-use">适用: {{ r.useCase }}</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Roadmap -->
+  <section id="roadmap" class="section section-alt">
+    <div class="container">
+      <h2 class="section-title">路线图</h2>
+      <p class="section-desc">从 MVP 到企业级运行时安全平台</p>
+      <div class="roadmap">
+        <div class="roadmap-item" v-for="(item, i) in roadmap" :key="i" :class="{ done: item.done, current: item.current }">
+          <div class="roadmap-status">{{ item.done ? '✓' : item.current ? '→' : '○' }}</div>
+          <div class="roadmap-content">
+            <h3>{{ item.title }}</h3>
+            <p>{{ item.desc }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <span class="nav-logo">🛡️</span>
+          <span>KubeVigil</span>
+          <span class="footer-subtitle">K8s 守夜人</span>
+        </div>
+        <div class="footer-links">
+          <a href="https://github.com/shuhuNB515/KubeVigil" target="_blank">GitHub</a>
+          <a href="https://github.com/shuhuNB515/KubeVigil/issues" target="_blank">Issues</a>
+          <a href="https://github.com/shuhuNB515/KubeVigil/pulls" target="_blank">PRs</a>
+        </div>
+        <div class="footer-copy">Apache License 2.0 &copy; 2024 KubeVigil</div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Back to top -->
+  <button class="back-top" v-show="scrolled" @click="scrollTo('hero')">↑</button>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
