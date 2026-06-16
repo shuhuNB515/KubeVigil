@@ -78,6 +78,7 @@ type EnrichedEvent struct {
 	EventType EventType
 	Timestamp time.Time
 	PID       uint32
+	PPID      uint32
 	Comm      string
 
 	// K8s 上下文

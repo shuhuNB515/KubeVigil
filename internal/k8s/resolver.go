@@ -142,7 +142,7 @@ func (r *Resolver) syncPods(ctx context.Context) {
 
 // findPidsForContainer 从 cgroup proc 文件中读取容器内所有 PID
 func (r *Resolver) findPidsForContainer(containerID string, podUID string) []uint32 {
-	var pids []uint32
+	pidSet := make(map[uint32]struct{})
 
 	// 尝试多种 cgroup 路径模式（覆盖 cgroup v1/v2 + 不同运行时）
 	cgroupPaths := []string{
@@ -170,14 +170,15 @@ func (r *Resolver) findPidsForContainer(containerID string, podUID string) []uin
 			}
 			var pid uint32
 			if _, err := fmt.Sscanf(line, "%d", &pid); err == nil && pid > 0 {
-				pids = append(pids, pid)
+				pidSet[pid] = struct{}{}
 			}
-		}
-		if len(pids) > 0 {
-			return pids
 		}
 	}
 
+	pids := make([]uint32, 0, len(pidSet))
+	for pid := range pidSet {
+		pids = append(pids, pid)
+	}
 	return pids
 }
 
@@ -256,11 +257,12 @@ func extractContainerID(containerID string) string {
 	return containerID
 }
 
-// hashContainerID 简单哈希 containerID 到 uint32
+// hashContainerID 使用 FNV-1a 哈希将 containerID 映射到 uint32
 func hashContainerID(id string) uint32 {
-	var h uint32
+	h := uint32(2166136261)
 	for _, c := range id {
-		h = h*31 + uint32(c)
+		h ^= uint32(c)
+		h *= 16777619
 	}
 	return h
 }

@@ -148,7 +148,9 @@ func (e *Engine) LoadRules(path string) error {
 		}
 	}
 
+	e.rulesMux.Lock()
 	e.rules = &rs
+	e.rulesMux.Unlock()
 	return nil
 }
 

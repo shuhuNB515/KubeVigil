@@ -146,7 +146,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("打开 Ring Buffer 失败: %w", err)
 	}
-	defer reader.Close()
+	// 注意：不在此处 defer reader.Close()，而是在退出时手动关闭以控制时序
 
 	// 启动 K8s Resolver
 	if a.k8s != nil {
@@ -293,6 +293,7 @@ func (a *Agent) handleExecveEvent(data []byte) {
 		EventType:     event.EventExecve,
 		Timestamp:      time.Now(),
 		PID:           bpfEvent.PID,
+		PPID:          bpfEvent.PPID,
 		Comm:          comm,
 		Detail:        match.Detail,
 		MatchedRule:   match.RuleName,
@@ -332,6 +333,7 @@ func (a *Agent) handleOpenEvent(data []byte) {
 		EventType:     event.EventOpen,
 		Timestamp:      time.Now(),
 		PID:           bpfEvent.PID,
+		PPID:          bpfEvent.PPID,
 		Comm:          comm,
 		Detail:        match.Detail,
 		MatchedRule:   match.RuleName,
@@ -363,7 +365,9 @@ func (a *Agent) handleConnectEvent(data []byte) {
 	}
 
 	// 端口从网络字节序（大端）转换为主机字节序
-	port := uint16(bpfEvent.Port>>8) | uint16(bpfEvent.Port<<8)
+	// bpf_probe_read_user 直接拷贝了 sin_port 的原始字节，
+	// binary.Read 用 LittleEndian 读取后需要交换字节序
+	port := (bpfEvent.Port >> 8) | (bpfEvent.Port << 8)
 
 	// 规则匹配
 	match := a.rules.MatchConnect(ip, port, comm)
@@ -375,6 +379,7 @@ func (a *Agent) handleConnectEvent(data []byte) {
 		EventType:     event.EventConnect,
 		Timestamp:      time.Now(),
 		PID:           bpfEvent.PID,
+		PPID:          bpfEvent.PPID,
 		Comm:          comm,
 		Detail:        match.Detail,
 		MatchedRule:   match.RuleName,
@@ -421,7 +426,7 @@ func (a *Agent) processEvents(ctx context.Context) {
 			return
 		case e := <-a.eventCh:
 			// 打印事件
-			fmt.Println(e.Format())
+			log.Printf("[Event] %s", e.Format())
 
 			// 如果需要响应，生成告警
 			if e.ActionNeeded && a.cfg.Response.Enabled {
@@ -457,7 +462,7 @@ func (a *Agent) processAlerts(ctx context.Context) {
 			alert.Action = string(action)
 
 			// 打印告警
-			fmt.Println(alert.Format())
+			log.Printf("[Alert] %s", alert.Format())
 
 			// 执行响应
 			if a.k8s != nil && alert.Namespace != "" && alert.PodName != "" {
@@ -513,6 +518,24 @@ func trimNull(b []byte) string {
 	return string(bytes.TrimRight(b, "\x00"))
 }
 
+// logLevelWeights 日志级别权重
+var logLevelWeights = map[string]int{
+	"debug": 0,
+	"info":  1,
+	"warn":  2,
+	"error": 3,
+}
+
+// shouldLog 判断当前日志级别是否应该输出
+func (a *Agent) shouldLog(level string) bool {
+	configLevel, ok1 := logLevelWeights[a.cfg.LogLevel]
+	msgLevel, ok2 := logLevelWeights[level]
+	if !ok1 || !ok2 {
+		return true
+	}
+	return msgLevel >= configLevel
+}
+
 // setupLogging 根据配置设置日志级别
 func (a *Agent) setupLogging() {
 	switch a.cfg.LogLevel {
@@ -520,7 +543,7 @@ func (a *Agent) setupLogging() {
 		log.SetFlags(log.LstdFlags | log.Lshortfile)
 		log.Println("[Agent] 日志级别: debug")
 	case "warn", "error":
-		log.SetFlags(0)
+		log.SetFlags(log.LstdFlags)
 	default:
 		log.SetFlags(log.LstdFlags)
 	}

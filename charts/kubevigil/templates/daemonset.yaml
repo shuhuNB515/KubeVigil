@@ -42,6 +42,15 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+          livenessProbe:
+            exec:
+              command:
+                - /usr/local/bin/kubevigil
+                - version
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
           volumeMounts:
             - name: config
               mountPath: /etc/kubevigil
