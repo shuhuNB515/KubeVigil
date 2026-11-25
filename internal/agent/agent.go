@@ -119,7 +119,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	a.setupLogging()
 
 	// 移除内存锁限制
-	if err := rlimit.RemoveMemLock(); err != nil {
+	if err := rlimit.RemoveMemlock(); err != nil {
 		return fmt.Errorf("移除内存锁限制失败: %w", err)
 	}
 
