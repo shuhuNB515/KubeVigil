@@ -2,8 +2,52 @@ package rules
 
 import (
 	"net"
+	"sync"
 	"testing"
 )
+
+func TestDefaultRulesCIDRBoundaries(t *testing.T) {
+	engine := NewEngine()
+	engine.LoadDefaultRules()
+	for _, tc := range []struct {
+		ip      string
+		blocked bool
+	}{
+		{"203.0.113.0", true},
+		{"203.0.113.255", true},
+		{"198.51.100.42", true},
+		{"203.0.112.255", false},
+		{"203.0.114.0", false},
+		{"198.51.101.0", false},
+	} {
+		t.Run(tc.ip, func(t *testing.T) {
+			result := engine.MatchConnect(net.ParseIP(tc.ip), 443, "client")
+			if (result != nil) != tc.blocked {
+				t.Fatalf("MatchConnect(%s, 443) = %v; blocked = %v", tc.ip, result, tc.blocked)
+			}
+		})
+	}
+}
+
+func TestLoadDefaultRulesConcurrentReaders(t *testing.T) {
+	engine := NewEngine()
+	engine.LoadDefaultRules()
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				engine.LoadDefaultRules()
+				if result := engine.MatchConnect(net.ParseIP("203.0.113.50"), 443, "client"); result == nil {
+					t.Error("default CIDR must remain active during replacement")
+				}
+				engine.GetRuleCount()
+			}
+		}()
+	}
+	wg.Wait()
+}
 
 func TestMatchExecve_BlockedProcess(t *testing.T) {
 	engine := NewEngine()

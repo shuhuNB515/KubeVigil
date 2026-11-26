@@ -11,11 +11,11 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.LogLevel != "info" {
 		t.Errorf("默认日志级别应为 info，实际 %s", cfg.LogLevel)
 	}
-	if cfg.RulesPath != "/etc/kubevigil/rules.yaml" {
-		t.Errorf("默认规则路径不正确: %s", cfg.RulesPath)
+	if cfg.Rules.RulesFile != "/etc/kubevigil/rules.yaml" {
+		t.Errorf("默认规则路径不正确: %s", cfg.Rules.RulesFile)
 	}
-	if cfg.BPFObjPath != "/opt/kubevigil/probes.o" {
-		t.Errorf("默认 BPF 对象路径不正确: %s", cfg.BPFObjPath)
+	if cfg.Probe.RingBufferSize != 16 {
+		t.Errorf("默认 Ring Buffer 大小不正确: %d", cfg.Probe.RingBufferSize)
 	}
 }
 
@@ -23,11 +23,12 @@ func TestLoadConfig(t *testing.T) {
 	// 创建临时配置文件
 	content := `
 logLevel: debug
-rulesPath: /tmp/rules.yaml
-bpfObjPath: /tmp/probes.o
-kubernetes:
-  inCluster: true
-  nodeName: test-node
+rules:
+  rulesFile: /tmp/rules.yaml
+probe:
+  ringBufferSize: 32
+response:
+  enabled: false
 `
 	tmpFile, err := os.CreateTemp("", "config-*.yaml")
 	if err != nil {
@@ -48,8 +49,14 @@ kubernetes:
 	if cfg.LogLevel != "debug" {
 		t.Errorf("日志级别应为 debug，实际 %s", cfg.LogLevel)
 	}
-	if cfg.Kubernetes.NodeName != "test-node" {
-		t.Errorf("节点名应为 test-node，实际 %s", cfg.Kubernetes.NodeName)
+	if cfg.Rules.RulesFile != "/tmp/rules.yaml" {
+		t.Errorf("规则路径应为 /tmp/rules.yaml，实际 %s", cfg.Rules.RulesFile)
+	}
+	if cfg.Probe.RingBufferSize != 32 {
+		t.Errorf("Ring Buffer 大小应为 32，实际 %d", cfg.Probe.RingBufferSize)
+	}
+	if cfg.Response.Enabled {
+		t.Error("显式禁用自动响应时应覆盖默认值")
 	}
 }
 
