@@ -169,7 +169,15 @@ func (e *Engine) parseCIDRs(rule *Rule) error {
 
 // LoadDefaultRules 加载默认规则
 func (e *Engine) LoadDefaultRules() {
-	e.rules = DefaultRuleset()
+	rs := DefaultRuleset()
+	for i := range rs.Rules {
+		if rs.Rules[i].Connect != nil {
+			_ = e.parseCIDRs(&rs.Rules[i])
+		}
+	}
+	e.rulesMux.Lock()
+	e.rules = rs
+	e.rulesMux.Unlock()
 }
 
 // MatchExecve 匹配 execve 事件

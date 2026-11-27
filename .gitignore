@@ -1,5 +1,5 @@
 # Binaries
-kubevigil
+/kubevigil
 *.exe
 
 # eBPF 编译产物

@@ -18,8 +18,9 @@ var (
 
 func main() {
 	rootCmd := &cobra.Command{
-		Use:   "kubevigil",
-		Short: "KubeVigil - K8s 运行时安全守夜人",
+		Use:          "kubevigil",
+		Short:        "KubeVigil - K8s 运行时安全守夜人",
+		SilenceUsage: true,
 		Long: `KubeVigil (K8s 守夜人) - 基于 eBPF 的 Kubernetes 运行时威胁检测与响应工具
 
 利用 eBPF 技术在内核态监控系统调用，实时检测容器内的异常行为，
@@ -46,6 +47,10 @@ func main() {
 
 func runAgent(cmd *cobra.Command, args []string) error {
 	printBanner()
+
+	if os.Geteuid() != 0 {
+		log.Println("[Warn] 当前非 root 权限运行，挂载 eBPF 探针通常需要 root 或 CAP_BPF/CAP_SYS_ADMIN 权限")
+	}
 
 	// 加载配置
 	var cfg *config.Config
